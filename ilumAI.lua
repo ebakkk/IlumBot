@@ -318,17 +318,12 @@ local initTargetData = function(playerName)
 end
 
 local predictLanding = function(fallingPlayerWs, targetPlayerWs)
-    -- Input validation
-    if not (fallingPlayer.Character and targetPlayer.Character) then
-        return nil, "Characters not loaded"
-    end
     
     local fallingHRP = fallingPlayer.Character:FindFirstChild("HumanoidRootPart")
     local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
     
 
-    
-    -- Calculate components
+
     local fallTime = calculateFreefallTime(fallingHRP, targetHRP.Position.Y)
     local landingPosition = predictHorizontalPosition(targetHRP, fallTime)
     
@@ -390,7 +385,13 @@ local detectIfClashing = function(targetName)
 
     local targetSaber = __index(data.targetWs, "Lightsaber")
 
-    if data.distanceFromLplr
+    if data.distanceFromLplr <= 6 then
+        if data.Stunned and data.prevBlockCount < 6 then
+            return true
+        end
+    end
+    return false
+end
 
 
 
