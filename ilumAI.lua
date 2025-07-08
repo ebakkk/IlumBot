@@ -8,19 +8,8 @@ GameMetatable = getrawmetatable and getrawmetatable(game) or {
     end
 
 }
-local function __index(table, key)
-    if table == nil then
-        return nil
-    end
-    return GameMetatable.__index(table, key) or rawget(table, key)
-end
-local function __newindex(table, key, value)
-    if table == nil then
-        return
-    end
-    rawset(table, key, value)
-    GameMetatable.__newindex(table, key, value)
-end
+
+local __index = GameMetatable.__index
 local GetService = __index(game, "GetService")
 local FindFirstChild = __index(game, "FindFirstChild")
 local FindFirstChildWhichIsA = __index(game, "FindFirstChildWhichIsA")
@@ -45,11 +34,9 @@ getgenv().lplrVars = {
     lplr = __index(Services.Players, "LocalPlayer"),
     lplrChar = __index(__index(Services.Players, "LocalPlayer"), "Character"),
     lplrHumanoid = __index(__index(__index(Services.Players, "LocalPlayer"), "Character"), "Humanoid"),
-    lplrValues = __index(__index(__index(Services.Players, "LocalPlayer"), "Character"), "Values"),
     lplrHRP = __index(__index(__index(Services.Players, "LocalPlayer"), "Character"), "HumanoidRootPart"),
     lplrPos = __index(__index(__index(__index(Services.Players, "LocalPlayer"), "Character"), "HumanoidRootPart"), "Position"),
     lplrName = __index(__index(Services.Players, "LocalPlayer"), "Name"),
-    lplrscripts = __index(__index(__index(Services.Players, "LocalPlayer"), "Character"), "Scripts"),
     lplrws = __index(Services.Workspace, __index(__index(Services.Players, "LocalPlayer"), "Name")),
     lplrismoving = function()
         return lplrVars.lplrHumanoid.MoveDirection.Magnitude > 0
@@ -317,7 +304,6 @@ simulate = {
 
 
 
-local StatsGui = __index(Services.StarterGui, "StatsGui")
 local Remotes = WaitForChild(Services.ReplicatedStorage, "Remotes")
 local ForcePower = __index(Remotes, "ForcePower")
 local ForcePowerStorage = WaitForChild(Services.ReplicatedStorage, "ForcePowerStorage")
@@ -374,16 +360,15 @@ end
 
 -- Actions --
 
-local Jump = function()
-    if OnGround(lplrVars.lplrname) then
-        -- lplrwsHumanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-        __index(lplrVars.lplrwsHumanoid, "Jump") = true
-    end
-end
+-- local Jump = function()
+--     if OnGround(lplrVars.lplrname) then
+--         -- lplrwsHumanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+--         __index(lplrVars.lplrwsHumanoid, "Jump") = true
+--     end
+-- end
 
 -- Force
 
-local StatsGuiLocalScript = GetSenvfunc(__index(StatsGui, "LocalScript"))
 
 local Abilities = {
 	"Lightning",
@@ -401,71 +386,73 @@ local Abilities = {
 local FlipCooldown = false
 
 local GlobalCooldown
-task.spawn(function()
-    while task.wait() do
-        GlobalCooldown = StatsGuiLocalScript.GlobalCooldown
-    end
-end)
+-- task.spawn(function()
+--     while task.wait() do
+--         GlobalCooldown = StatsGuiLocalScript.GlobalCooldown
+--     end
+-- end)
 
 local DashCooldown = false
 
-local function Flip()
-	if __index(__index(lplrVars.lplr, "Force"), "Value") >= 25 and FlipCooldown == false and DashCooldown == false and GlobalCooldown == false then
-		FlipCooldown = true
-		ForcePower:FireServer("Dash", {}, 25)
-		if MovementDirection() == "Forward" or MovementDirection() == "Sideways" or MovementDirection() == "Standing Still" then
-			__index(ForcePowerStorage, "FlipForward"):Play(nil, nil, 1.35)
-        elseif MovementDirection() == "Backward" then
-			__index(ForcePowerStorage, "FlipBackward"):Play(nil, nil, 1.35)
-		end
-		__index(lplrVars.lplrHumanoid, "WalkSpeed") = 42
-		__index(lplrVars.lplrHumanoid, "JumpPower") = 75
-		RunService.RenderStepped:wait()
-		__index(lplrVars.lplrHumanoid, "Jump") = true
-		for i = 1, 13 do
-			__index(lplrVars.lplrHumanoid, "WalkSpeed") = 16 + (i * 2)
-			task.wait()
-		end
-		for i = 1, 13 do
-			__index(lplrVars.lplrHumanoid, "WalkSpeed") = 42 - (i * 2)
-			task.wait()
-		end
-		__index(lplrVars.lplrHumanoid, "JumpPower") = 50
-		FlipCooldown = false
-	end
-end
+-- local function Flip()
+-- 	if __index(__index(lplrVars.lplr, "Force"), "Value") >= 25 and FlipCooldown == false and DashCooldown == false and GlobalCooldown == false then
+-- 		FlipCooldown = true
+-- 		ForcePower:FireServer("Dash", {}, 25)
+-- 		if MovementDirection() == "Forward" or MovementDirection() == "Sideways" or MovementDirection() == "Standing Still" then
+-- 			__index(ForcePowerStorage, "FlipForward"):Play(nil, nil, 1.35)
+--         elseif MovementDirection() == "Backward" then
+-- 			__index(ForcePowerStorage, "FlipBackward"):Play(nil, nil, 1.35)
+-- 		end
+-- 		__index(lplrVars.lplrHumanoid, "WalkSpeed") = 42
+-- 		__index(lplrVars.lplrHumanoid, "JumpPower") = 75
+-- 		RunService.RenderStepped:wait()
+-- 		__index(lplrVars.lplrHumanoid, "Jump") = true
+-- 		for i = 1, 13 do
+-- 			__index(lplrVars.lplrHumanoid, "WalkSpeed") = 16 + (i * 2)
+-- 			task.wait()
+-- 		end
+-- 		for i = 1, 13 do
+-- 			__index(lplrVars.lplrHumanoid, "WalkSpeed") = 42 - (i * 2)
+-- 			task.wait()
+-- 		end
+-- 		__index(lplrVars.lplrHumanoid, "JumpPower") = 50
+-- 		FlipCooldown = false
+-- 	end
+-- end
 
-local function Dash()
-	if  __index(__index(lplrVars.lplr, "Force"), "Value") >= 30 and FlipCooldown == false and DashCooldown == false and GlobalCooldown == false then
-		DashCooldown = true
-		__index(ForcePowerStorage, "Dash"):Play(nil, nil, 1.25)
-		__index(lplrVars.lplrHumanoid, "WalkSpeed") = 55
-		local DashParticles = WaitForChild(ForcePowerStorage, "DashParticles"):Clone()
-		DashParticles.Parent = lplrVars.lplrhrp
-		DashParticles:Emit(75)
-		ForcePower:FireServer("Dash", {}, 30)
-		local Sound = Instance.new("Sound")
-		Sound.Parent = lplrhrp
-		Sound.SoundId = "rbxassetid://203697228"
-		Sound.Looped = false
-		Sound.Volume = 1
-		Sound:Play()
-		Sound.Stopped:connect(function()
-			Sound:Destroy()
-		end)
-		task.wait(0.25)
-		for i = 1, 24 do
-			__index(lplrVars.lplrHumanoid, "WalkSpeed") = 40 - i
-			task.wait()
-		end
-		DashParticles:Destroy()
-		DashCooldown = false
-	end
-end
+-- local function Dash()
+-- 	if  __index(__index(lplrVars.lplr, "Force"), "Value") >= 30 and FlipCooldown == false and DashCooldown == false and GlobalCooldown == false then
+-- 		DashCooldown = true
+-- 		__index(ForcePowerStorage, "Dash"):Play(nil, nil, 1.25)
+-- 		__index(lplrVars.lplrHumanoid, "WalkSpeed") = 55
+-- 		local DashParticles = WaitForChild(ForcePowerStorage, "DashParticles"):Clone()
+-- 		DashParticles.Parent = lplrVars.lplrhrp
+-- 		DashParticles:Emit(75)
+-- 		ForcePower:FireServer("Dash", {}, 30)
+-- 		local Sound = Instance.new("Sound")
+-- 		Sound.Parent = lplrhrp
+-- 		Sound.SoundId = "rbxassetid://203697228"
+-- 		Sound.Looped = false
+-- 		Sound.Volume = 1
+-- 		Sound:Play()
+-- 		Sound.Stopped:connect(function()
+-- 			Sound:Destroy()
+-- 		end)
+-- 		task.wait(0.25)
+-- 		for i = 1, 24 do
+-- 			__index(lplrVars.lplrHumanoid, "WalkSpeed") = 40 - i
+-- 			task.wait()
+-- 		end
+-- 		DashParticles:Destroy()
+-- 		DashCooldown = false
+-- 	end
+-- end
 
-local 
+-- local 
 -- Lightsaber
 
+
+-- will be implemented later
 local Block = function()
     local Saber = FindFirstChildWhichIsA(lplrVars.lplrws, "Tool")
     local detectedToolType = DetectToolType(Saber)
@@ -473,7 +460,7 @@ local Block = function()
         local SaberConfiguration = __index(Saber, "Configuration")
         local SaberType = __index(SaberConfiguration, "LightsaberType")
         local Animations = require(__index(Saber, "Lightsaber_Animations"))
-        local saberScript = GetSenvfunc(__index(Saber, "Local"))
+        local saberScript = getsenv(__index(Saber, "Local"))
 
         local Block1 = LoadAnimation(Animations[detectedToolType[2]].Block1)
         local Block2 = LoadAnimation(Animations[detectedToolType[2]].Block2)
@@ -501,7 +488,7 @@ function CancelBlock()
         local SaberConfiguration = __index(Saber, "Configuration")
         local SaberType = __index(SaberConfiguration, "LightsaberType")
         local Animations = require(__index(Saber, "Lightsaber_Animations"))
-        local saberScript = GetSenvfunc(__index(Saber, "Local"))
+        local saberScript = getsenv(__index(Saber, "Local"))
 
         local Block1 = LoadAnimation(Animations[detectedToolType[2]].Block1)
         local Block2 = LoadAnimation(Animations[detectedToolType[2]].Block2)
@@ -520,10 +507,10 @@ local Swing = function()
     end
 end
 
-local AC = function()
+local AC_dec = function()
     local Saber = FindFirstChildWhichIsA(lplrVars.lplrws, "Tool")
     if DetectToolType(Saber)[1] == "Saber" then
-        local saberScript = GetSenvfunc(__index(Saber, "Local"))
+        local saberScript = getsenv(__index(Saber, "Local"))
         if saberScript.IsBlocking == true then
             CancelBlock()
         end
@@ -533,7 +520,27 @@ local AC = function()
     end
 end
 
-local 
+---
+
+local mouse2HeldDown = false
+
+local AC = function()
+    local Saber = FindFirstChildWhichIsA(lplrVars.lplrws, "Tool")
+    if DetectToolType(Saber)[1] == "Saber" then
+        if mouse2HeldDown then
+            mouse2release()
+            mouse2HeldDown = false
+        end
+        mouse1click()
+        wait(0.05)
+        mouse1release()
+        task.wait(math.random(5, 15)*0.001)
+        mouse2press()
+        task.wait(0.1 // 128)
+        mouse2release()
+    end
+end
+
 -- Decision Making --
 
 
@@ -562,3 +569,5 @@ local function ToggleAI(input, gameProcessedEvent)
         toggle = not toggle
     end
 end
+
+AC()
