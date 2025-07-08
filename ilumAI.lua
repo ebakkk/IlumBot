@@ -16,6 +16,8 @@ local FindFirstChildWhichIsA = __index(game, "FindFirstChildWhichIsA")
 local WaitForChild = __index(game, "WaitForChild")
 local IsA = __index(game, "IsA")
 
+tonumber(LocalPlayer.PlayerGui:WaitForChild("StatsGui").Block.Count.Text)
+
 local Services = {
     Workspace = GetService(game, "Workspace"),
     Players = GetService(game, "Players"),
@@ -40,7 +42,8 @@ getgenv().lplrVars = {
     lplrws = __index(Services.Workspace, __index(__index(Services.Players, "LocalPlayer"), "Name")),
     lplrismoving = function()
         return lplrVars.lplrHumanoid.MoveDirection.Magnitude > 0
-    end
+    end,
+    BlockCount = lplr.PlayerGui:WaitForChild("StatsGui").Block.Count.Text
 }
 
 getgenv()._stopMoveToDestination = false
@@ -388,7 +391,7 @@ end
 
 -- Decision Making --
 
-local function analyzeACTiming(playerName, saber)
+local analyzeACTiming = function(playerName, saber)
     if not targetData[playerName] then
         targetData[playerName] = {
             acData = {
@@ -435,7 +438,7 @@ local function analyzeACTiming(playerName, saber)
     end)
 end
 
-local function resetACTiming(playerName)
+local resetACTiming = function(playerName)
     if targetData[playerName] and targetData[playerName].acData then
         targetData[playerName].acData.samples = {}
         targetData[playerName].isSafeAC = false
@@ -516,6 +519,28 @@ local detectIfClashing = function(targetName)
     end
     return false
 end
+
+local runChaseOrClash = function(playerName)
+    local opponentData = targetData[playerName]
+
+    local opponentHealth = targetData[playerName].Health
+    local opponentForce = targetData[playerName].Force
+    local opponentStunned = targetData[playerName].Stunned
+    local opponentBlocks = targetData[playerName].prevBlockCount
+    local opponentForce = targetData[playerName].Force
+
+    local lplrHealth = lplrVars.lplrHumanoid.Health
+
+    local lplrHealth = lplrVars.lplrHumanoid.Health
+    if lplrHealth <= 23 and opponentHealth > 50 then
+        return "Run"
+    
+    -- check if losing clash
+    elseif (lplrVars.BlockCount < opponentBlocks) or (lplrVars.BlockCount <= 1) then
+        return "Run"
+    end
+end
+
 
 -- Actions 
 
