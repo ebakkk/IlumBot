@@ -8,19 +8,8 @@ GameMetatable = getrawmetatable and getrawmetatable(game) or {
     end
 
 }
-local function __index(table, key)
-    if table == nil then
-        return nil
-    end
-    return GameMetatable.__index(table, key) or rawget(table, key)
-end
-local function __newindex(table, key, value)
-    if table == nil then
-        return
-    end
-    rawset(table, key, value)
-    GameMetatable.__newindex(table, key, value)
-end
+
+local __index = GameMetatable.__index
 local GetService = __index(game, "GetService")
 local FindFirstChild = __index(game, "FindFirstChild")
 local FindFirstChildWhichIsA = __index(game, "FindFirstChildWhichIsA")
@@ -277,7 +266,7 @@ simulate = {
 }
 
 getgenv().targetData = {
-    "🐃£$&^!ExampleData" = {targetWs = FindFirstChild(Services.Workspace, "ExampleName"),
+    ExampleData = {targetWs = FindFirstChild(Services.Workspace, "ExampleName"),
                         targetACTimes = {},
                         Stunned = false,
                         Force = 100,
@@ -286,8 +275,14 @@ getgenv().targetData = {
                         currentACTiming = 0,
                         prevBlockCount = 6,
                         saberEquipped = false,
-                        HRP = __index(FindFirstChild(Services.Workspace, "ExampleName"), "HumanoidRootPart"),
-                        distanceFromLplr = 0}
+                        -- HRP = __index(FindFirstChild(Services.Workspace, "ExampleName"), "HumanoidRootPart"),
+                        distanceFromLplr = 0,
+                        acData = {
+                                samples = {},
+                                lastState = "saber.Blocking",
+                                lastFalseTime = 0
+                            },
+                                                },
 }
 
 
@@ -295,6 +290,11 @@ local Remotes = WaitForChild(Services.ReplicatedStorage, "Remotes")
 local ForcePower = __index(Remotes, "ForcePower")
 local ForcePowerStorage = WaitForChild(Services.ReplicatedStorage, "ForcePowerStorage")
 
+-- Constants
+local AC_VARIATION_THRESHOLD = 0.03 
+local REQUIRED_AC_SAMPLES = 2
+
+--
 
 local initTargetData = function(playerName)
     if not targetData[playerName] then
@@ -308,17 +308,145 @@ local initTargetData = function(playerName)
                                                 isSafeAC = false,
                                                 currentACTiming = 0,
                                                 prevBlockCount = 6,
-                                                saberEquipped = false
+                                                saberEquipped = false,
                                                 HRP = __index(targetWs, "HumanoidRootPart"),
-                                                distanceFromLplr = 0
+                                                distanceFromLplr = 0,
+                                                -- acData = {
+                                                --         samples = {},
+                                                --         lastState = saber.Blocking,
+                                                --         lastFalseTime = 0
+                                                --     }
                                                 }
     end
 end
 
+
+local updateTargetData = function(playerName, data)
+    local targetPlayers = FindFirstChild(Services.Players, playerName)
+    local targetWs = FindFirstChild(Services.Workspace, playerName)
+
+    data.Health = __index(__index(targetWs, "Health"), "Value")
+    data.Force = __index(__index(targetPlayers, "Force"), "Value")
+    data.Stunned = __index(__index(targetPlayers, "Stunned"), "Value")
+    data.saberEquipped = checkIfSaberEquipped(playerName)
+    if data.saberEquipped then
+        data.prevBlockCount = __index(__index(__index(targetWs, "Lightsaber"), "Configuration"), "BlockHealth")
+    end
+    data.HRP = __index(targetWs, "HumanoidRootPart")
+    data.distanceFromLplr = (data.HRP.Position - lplrVars.lplrPos.Position).Magnitude
+end
+
+
+local OnGround = function(player)
+    local player = __index(Services.Players, player)
+    local playerchar = __index(player, "Character")
+    local playerhumanoid = __index(playerchar, "Humanoid")
+    local playerrootpart = __index(playerhumanoid, "RootPart")
+    local playervelocity = __index(playerrootpart, "Velocity")
+    return playervelocity.Y == 0 or playervelocity.Y > 0
+end
+
+local DetectToolType = function(tool)
+    if tool and typeof(tool) == "Instance" and tool:IsA("Tool") then
+        if FindFirstChild(tool, "Lightsaber_Animations") then
+            return {"Saber", tool.Configuration.LightsaberType.Value}
+        elseif FindFirstChild(tool, "GunSettings") or tool.Name == "Flamethrower" then
+            return {"Gun"}
+        end
+    end
+end
+
+local LoadAnimation = function(Id)
+	local Animation = Instance.new("Animation")
+	Animation.Parent = lplrchar
+	Animation.AnimationId = "rbxassetid://"..tostring(Id)
+	return lplrchar.Humanoid:LoadAnimation(Animation)
+end
+
+local function MovementDirection()
+    local velocity = __index(lplrVars.lplrhrp, "AssemblyLinearVelocity")
+    local lookvector = __index(__index(lplrVars.lplrhrp, "CFrame"), "LookVector")
+    local rightvector = __index(__index(lplrVars.lplrhrp, "CFrame"), "RightVector")
+
+    local forwarddot = velocity:Dot(lookvector)
+    local sidewaysdot = velocity:Dot(rightvector)
+
+    local movementdirection = ""
+
+    if velocity.Magnitude < 0.1 then
+        movementdirection = "Standing Still"
+    elseif forwarddot > 0 then
+        movementdirection = "Forward"
+    elseif forwarddot < 0 then
+        movementdirection = "Backward"
+    elseif math.abs(sidewaysdot) > 0.1 then
+        movementdirection = "Sideways"
+    end
+
+    return movementdirection
+end
+
+-- Decision Making --
+
+local function analyzeACTiming(playerName, saber)
+    if not targetData[playerName] then
+        targetData[playerName] = {
+            acData = {
+                samples = {},
+                lastState = saber.Blocking,
+                lastFalseTime = 0
+            }
+        }
+    end
+
+    local tracker = targetData[playerName].acData
+
+    if tracker.connection then
+        tracker.connection:Disconnect()
+    end
+
+    local saberBlocking = __index(saber, "Blocking")
+
+    tracker.connection = saberBlocking:GetPropertyChangedSignal("Value"):Connect(function()
+        local current = saberBlocking.Value
+
+        if tracker.lastState == false and current == true then
+            local now = os.clock()
+            if tracker.lastFalseTime > 0 then
+                local acTime = now - tracker.lastFalseTime
+
+                table.insert(tracker.samples, acTime)
+                if #tracker.samples > REQUIRED_SAMPLES then
+                    table.remove(tracker.samples, 1)
+                end
+                    -- aa
+                if #tracker.samples == REQUIRED_SAMPLES then
+                    local diff = math.abs(tracker.samples[1] - tracker.samples[2])
+                    targetData[playerName].isSafeAC = (diff <= AC_VARIATION_THRESHOLDD)
+                    targetData[playerName].lastACTiming = (tracker.samples[1] + tracker.samples[2]) / 2
+                end
+            end
+        end
+        if current == false then
+            tracker.lastFalseTime = os.clock()
+        end
+
+        tracker.lastState = current
+    end)
+end
+
+local function resetACTiming(playerName)
+    if targetData[playerName] and targetData[playerName].acData then
+        targetData[playerName].acData.samples = {}
+        targetData[playerName].isSafeAC = false
+    end
+end
+
+
 local predictLanding = function(fallingPlayerWs, targetPlayerWs)
     
-    local fallingHRP = fallingPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local fallingHRP = FindFirstChild(fallingPlayerWs, "HumanoidRootPart")
+    local targetHRP = FindFirstChild(targetPlayerWs, "HumanoidRootPart")
 
     local fallTime = calculateFreefallTime(fallingHRP, targetHRP.Position.Y)
     local landingPosition = predictHorizontalPosition(targetHRP, fallTime)
@@ -326,14 +454,14 @@ local predictLanding = function(fallingPlayerWs, targetPlayerWs)
     return {
         position = landingPosition,
         time = fallTime,
-        horizontalLandingDisplacement = (landingPosition - targetHRP.Position) * Vector3.new(1, 0, 1)  -- X/Z only
+        horizontalLandingDisplacement = (landingPosition - targetHRP.Position) * Vector3.new(1, 0, 1)
     }
 end
 
 local calculateFreefallTime = function(fallingHRP, targetY)
     local GRAVITY = workspace.Gravity
     local TERMINAL_VELOCITY = 120 
-    local currentFallSpeed = -(__index((__index(fallingHRP, "Velocity"), "Y")))
+    local currentFallSpeed = -fallingHRP.Velocity.Y
     
     if currentFallSpeed >= TERMINAL_VELOCITY then
         return (fallingHRP.Position.Y - targetY) / TERMINAL_VELOCITY
@@ -389,87 +517,14 @@ local detectIfClashing = function(targetName)
     return false
 end
 
+-- Actions 
 
-local updateTargetData = function(playerName, data)
-    local targetPlayers = FindFirstChild(Services.Players, playerName)
-    local targetWs = FindFirstChild(Services.Workspace, playerName)
-
-    data.Health = __index(__index(targetWs, "Health"), "Value")
-    data.Force = __index(__index(targetPlayers, "Force"), "Value")
-    data.Stunned = __index(__index(targetPlayers, "Stunned"), "Value")
-    data.saberEquipped = checkIfSaberEquipped(playerName)
-    if data.saberEquipped then
-        data.prevBlockCount = __index(__index(__index(targetWs, "Lightsaber"), "Configuration"), "BlockHealth")
-    end
-    data.HRP = __index(targetWs, "HumanoidRootPart")
-    data.distanceFromLplr = (data.HRP.Position - lplrVars.lplrPos.Position).Magnitude
-end
-
-
-local calculateOpponentAcTiming = function(playerName)
-    if not targetData[playerName] then
-        initTargetData(playerName)
-    end
-
-    local opponentData = targetData[playerName]
-
-local OnGround = function(player)
-    local player = __index(Services.Players, player)
-    local playerchar = __index(player, "Character")
-    local playerhumanoid = __index(playerchar, "Humanoid")
-    local playerrootpart = __index(playerhumanoid, "RootPart")
-    local playervelocity = __index(playerrootpart, "Velocity")
-    return playervelocity.Y == 0 or playervelocity.Y > 0
-end
-
-local DetectToolType = function(tool)
-    if tool and typeof(tool) == "Instance" and tool:IsA("Tool") then
-        if FindFirstChild(tool, "Lightsaber_Animations") then
-            return {"Saber", tool.Configuration.LightsaberType.Value}
-        elseif FindFirstChild(tool, "GunSettings") or tool.Name == "Flamethrower" then
-            return {"Gun"}
-        end
+local Jump = function()
+    if OnGround(lplrVars.lplrname) then
+        -- lplrwsHumanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        lplrVars.lplrwsHumanoid.Jump = true
     end
 end
-
-local LoadAnimation = function(Id)
-	local Animation = Instance.new("Animation")
-	Animation.Parent = lplrchar
-	Animation.AnimationId = "rbxassetid://"..tostring(Id)
-	return lplrchar.Humanoid:LoadAnimation(Animation)
-end
-
-local function MovementDirection()
-    local velocity = __index(lplrVars.lplrhrp, "AssemblyLinearVelocity")
-    local lookvector = __index(__index(lplrVars.lplrhrp, "CFrame"), "LookVector")
-    local rightvector = __index(__index(lplrVars.lplrhrp, "CFrame"), "RightVector")
-
-    local forwarddot = velocity:Dot(lookvector)
-    local sidewaysdot = velocity:Dot(rightvector)
-
-    local movementdirection = ""
-
-    if velocity.Magnitude < 0.1 then
-        movementdirection = "Standing Still"
-    elseif forwarddot > 0 then
-        movementdirection = "Forward"
-    elseif forwarddot < 0 then
-        movementdirection = "Backward"
-    elseif math.abs(sidewaysdot) > 0.1 then
-        movementdirection = "Sideways"
-    end
-
-    return movementdirection
-end
-
--- Actions --
-
--- local Jump = function()
---     if OnGround(lplrVars.lplrname) then
---         -- lplrwsHumanoid:ChangeState(Enum.HumanoidStateType.Jumping)
---         __index(lplrVars.lplrwsHumanoid, "Jump") = true
---     end
--- end
 
 -- Force
 
@@ -621,8 +676,6 @@ local function SimulateAC()
     end
 end
 
----
-
 local mouse2HeldDown = false
 
 local AC = function()
@@ -642,13 +695,17 @@ local AC = function()
     end
 end
 
+local smartAC = function(targetName)
+    --
+end
 
-
-
--- Decision Making --
 
 
 -- Toggle --
+
+local Bot = function()
+    -- TBI
+end
 
 local IsMobile = false
 if not __index(Services.UserInputService, "MouseEnabled") then
