@@ -54,6 +54,8 @@ getgenv().lplrVars = {
     end
 }
 
+
+
 getgenv()._stopMoveToDestination = false
 
 simulate = {
@@ -276,13 +278,146 @@ simulate = {
     }
 }
 
-
+getgenv().targetData = {
+    "🐃£$&^!ExampleData" = {targetWs = FindFirstChild(Services.Workspace, "ExampleName"),
+                        targetACTimes = {},
+                        Stunned = false,
+                        Force = 100,
+                        Health = 100,
+                        isSafeAC = false,
+                        currentACTiming = 0,
+                        prevBlockCount = 6,
+                        saberEquipped = false,
+                        HRP = __index(FindFirstChild(Services.Workspace, "ExampleName"), "HumanoidRootPart"),
+                        distanceFromLplr = 0}
+}
 
 
 local Remotes = WaitForChild(Services.ReplicatedStorage, "Remotes")
 local ForcePower = __index(Remotes, "ForcePower")
 local ForcePowerStorage = WaitForChild(Services.ReplicatedStorage, "ForcePowerStorage")
 
+
+local initTargetData = function(playerName)
+    if not targetData[playerName] then
+        local targetWs = FindFirstChild(Services.Workspace, playerName)
+        targetData[playerName] =                {
+                                                targetWs = targetWs,
+                                                targetACTimes = {},
+                                                Stunned = false,
+                                                Health = __index(targetWs, "Humanoid").Health.Value,
+                                                Force = __index(__index((FindFirstChild(Services.Players, playerName)), "Force"), "Value"),
+                                                isSafeAC = false,
+                                                currentACTiming = 0,
+                                                prevBlockCount = 6,
+                                                saberEquipped = false
+                                                HRP = __index(targetWs, "HumanoidRootPart"),
+                                                distanceFromLplr = 0
+                                                }
+    end
+end
+
+local predictLanding = function(fallingPlayerWs, targetPlayerWs)
+    -- Input validation
+    if not (fallingPlayer.Character and targetPlayer.Character) then
+        return nil, "Characters not loaded"
+    end
+    
+    local fallingHRP = fallingPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+
+    
+    -- Calculate components
+    local fallTime = calculateFreefallTime(fallingHRP, targetHRP.Position.Y)
+    local landingPosition = predictHorizontalPosition(targetHRP, fallTime)
+    
+    return {
+        position = landingPosition,
+        time = fallTime,
+        horizontalLandingDisplacement = (landingPosition - targetHRP.Position) * Vector3.new(1, 0, 1)  -- X/Z only
+    }
+end
+
+local calculateFreefallTime = function(fallingHRP, targetY)
+    local GRAVITY = workspace.Gravity
+    local TERMINAL_VELOCITY = 120 
+    local currentFallSpeed = -(__index((__index(fallingHRP, "Velocity"), "Y")))
+    
+    if currentFallSpeed >= TERMINAL_VELOCITY then
+        return (fallingHRP.Position.Y - targetY) / TERMINAL_VELOCITY
+    end
+    
+    local timeToTerminalVelocity = (TERMINAL_VELOCITY - currentFallSpeed) / GRAVITY
+    local accelerationDistance = currentFallSpeed * timeToTerminalVelcoity + 0.5 * GRAVITY * timeToTerminalVelcoity^2
+    local totalFallDistance = fallingHRP.Position.Y - targetY
+    
+
+    -- quadratic solution, errors if solution is complex
+    if totalFallDistance <= accelerationDistance then
+        return (-currentFallSpeed + math.sqrt(currentFallSpeed^2 + 2 * GRAVITY * totalFallDistance)) / GRAVITY
+    end
+    
+    local remainingDistance = totalFallDistance - accelerationDistance
+    return timeToTerminalVelcoity + (remainingDistance / TERMINAL_VELOCITY)
+end
+
+local predictHorizontalLandingPosition = function(targetHRP, fallingDuration)
+    local horizontalVelocity = Vector3.new(
+        targetHRP.Velocity.X,
+        0,
+        targetHRP.Velocity.Z
+    )
+    return targetHRP.Position + (horizontalVelocity * duration)
+end
+
+
+local checkIfSaberEquipped = function(targetName)
+    if not FindFirstChild(FindFirstChild(Services.Workspace, targetName), "Lightsaber") then
+        return false
+    end
+
+    return true
+end
+
+local detectIfClashing = function(targetName)
+    if not targetData[playerName] then
+        initTargetData(playerName)
+    end
+    local data = targetData[playerName]
+
+    if not data.saberEquipped then return end
+
+    local targetSaber = __index(data.targetWs, "Lightsaber")
+
+    if data.distanceFromLplr
+
+
+
+
+
+local updateTargetData = function(playerName, data)
+    local targetPlayers = FindFirstChild(Services.Players, playerName)
+    local targetWs = FindFirstChild(Services.Workspace, playerName)
+
+    data.Health = __index(__index(targetWs, "Health"), "Value")
+    data.Force = __index(__index(targetPlayers, "Force"), "Value")
+    data.Stunned = __index(__index(targetPlayers, "Stunned"), "Value")
+    data.saberEquipped = checkIfSaberEquipped(playerName)
+    if data.saberEquipped then
+        data.prevBlockCount = __index(__index(__index(targetWs, "Lightsaber"), "Configuration"), "BlockHealth")
+    end
+    data.HRP = __index(targetWs, "HumanoidRootPart")
+    data.distanceFromLplr = (data.HRP.Position - lplrVars.lplrPos.Position).Magnitude
+end
+
+
+local calculateOpponentAcTiming = function(playerName)
+    if not targetData[playerName] then
+        initTargetData(playerName)
+    end
+
+    local opponentData = targetData[playerName]
 
 local OnGround = function(player)
     local player = __index(Services.Players, player)
@@ -515,6 +650,9 @@ local AC = function()
         simulate.mouserelease(false)
     end
 end
+
+
+
 
 -- Decision Making --
 
