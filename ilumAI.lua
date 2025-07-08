@@ -8,8 +8,19 @@ GameMetatable = getrawmetatable and getrawmetatable(game) or {
     end
 
 }
-
-local __index = GameMetatable.__index
+local function __index(table, key)
+    if table == nil then
+        return nil
+    end
+    return GameMetatable.__index(table, key) or rawget(table, key)
+end
+local function __newindex(table, key, value)
+    if table == nil then
+        return
+    end
+    rawset(table, key, value)
+    GameMetatable.__newindex(table, key, value)
+end
 local GetService = __index(game, "GetService")
 local FindFirstChild = __index(game, "FindFirstChild")
 local FindFirstChildWhichIsA = __index(game, "FindFirstChildWhichIsA")
@@ -43,59 +54,62 @@ getgenv().lplrVars = {
     end
 }
 
+getgenv()._stopMoveToDestination = false
+
 simulate = {
     keypress = function(key)
-        if Services.UserInputService then
-            Services.UserInputService:PressKey(key)
-        end
-    end,
-
-    keyhold = function(key)
-        if Services.UserInputService then
-            Services.UserInputService:HoldKey(key)
-        end
+        keypress(key)
     end,
 
     keyrelease = function(key)
-        if Services.UserInputService then
-            Services.UserInputService:ReleaseKey(key)
-        end
+        keyrelease(key)
     end,
 
     mouseclick = function(button)
-        if Services.UserInputService then
-            Services.UserInputService:ClickButton(button)
-        end
+        if button == true then mouse1click() elseif button == false then mouse2click() end
     end,
 
-    mousehold = function(button)
-        if Services.UserInputService then
-            Services.UserInputService:HoldButton(button)
-        end
+    mousepress = function(button)
+        if button == true then mouse1press() elseif button == false then mouse2press() end
     end,
 
     mouserelease = function(button)
-        if Services.UserInputService then
-            Services.UserInputService:ReleaseButton(button)
-        end
+        if button == true then mouse1release() elseif button == false then mouse2release() end
     end,
 
-    cameraCFrame = function(cframe)
-        if Services.UserInputService then
-            Services.UserInputService:SetCameraCFrame(cframe)
-        end
+    mousemoveabs = function(x, y)
+        mousemoveabs(x, y)
     end,
 
-    mouselocation = function(location)
-        if Services.UserInputService then
-            Services.UserInputService:SetMouseLocation(location)
-        end
+    mousemoverel = function(x, y)
+        mousemoverel(x, y)
     end,
 
-    shiftlock = function(state)
-        if Services.UserInputService then
-            Services.UserInputService:SetShiftLockState(state)
-        end
+    mousescroll = function(px)
+        mousescroll(px)
+    end,
+
+    jump = function()
+        task.spawn(function() 
+            keypress(0x20)
+            task.wait(0.01)
+            keyrelease(0x20)
+        end)
+    end,
+
+    cameraCFrame = function(pos)
+        local camera = Services.Workspace.CurrentCamera
+        if not camera then return end
+        local targetCFrame = CFrame.new(lplrVars.lplrPos, pos) 
+        camera.CFrame = targetCFrame
+    end,
+
+    shiftlock = function()
+        task.spawn(function() 
+            keypress(0x10)
+            task.wait(0.01)
+            keyrelease(0x10)
+        end)
     end,
 
     move = function(direction, camera)
@@ -104,11 +118,16 @@ simulate = {
         humanoid:Move(direction, camera)
     end,
 
-    stopmoving = function()
-        local humanoid = lplrVars.lplrHumanoid
-        if not humanoid then return end
-        humanoid:Stop()
+    stopmovingtodestination = function()
         getgenv()._stopMoveToDestination = true
+    end,
+
+    stopmoving = function()
+        task.spawn(function() 
+            keypress(0x57)
+            task.wait(0.001)
+            keyrelease(0x57)
+        end)
     end,
 
     moveto = function(position, part)
@@ -124,28 +143,25 @@ simulate = {
         getgenv()._stopMoveToDestination = false
 
         local path = Services.PathfindingService:CreatePath({
-            AgentRadius = humanoid.HipWidth,
-            AgentHeight = humanoid.HipHeight,
-            AgentCanJump = humanoid.Jump,
-            AgentJumpHeight = humanoid.JumpHeight,
-            AgentMaxSlope = humanoid.MaxSlope
+            AgentRadius = (lplrVars.lplrHRP and lplrVars.lplrHRP.Size.X / 2) or 2,
+            AgentHeight = humanoid.HipHeight or 5,
+            AgentCanJump = humanoid.Jump or true,
+            AgentJumpHeight = humanoid.JumpHeight or 10,
+            AgentMaxSlope = 45
         })
         path:ComputeAsync(lplrVars.lplrPos, destination)
 
-        if path.Status == Enum.PathStatus.Complete then
+        if path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.ClosestOutOfRange then
             local waypoints = path:GetWaypoints()
             task.spawn(function()
                 for i, waypoint in ipairs(waypoints) do
                     if getgenv()._stopMoveToDestination then
-                        humanoid:Stop()
                         break
                     end
                     humanoid:MoveTo(waypoint.Position)
                     if waypoint.Action == Enum.PathWaypointAction.Jump then
                         if Services.UserInputService then
-                            Services.UserInputService:PressKey(Enum.KeyCode.Space)
-                            task.wait(0.1)
-                            Services.UserInputService:ReleaseKey(Enum.KeyCode.Space)
+                            simulate.jump()
                         end
                     end
                     local finished = false
@@ -155,7 +171,6 @@ simulate = {
                     end)
                     while not finished do
                         if getgenv()._stopMoveToDestination then
-                            humanoid:Stop()
                             if conn then conn:Disconnect() end
                             return
                         end
@@ -169,14 +184,6 @@ simulate = {
         end
     end,
 
-    jump = function()
-        if Services.UserInputService then
-            Services.UserInputService:PressKey(Enum.KeyCode.Space)
-            task.wait(0.1)
-            Services.UserInputService:ReleaseKey(Enum.KeyCode.Space)
-        end
-    end,
-
     lookat = function(targetPosition)
         local hrp = lplrVars.lplrHRP
         if not hrp then return end
@@ -185,39 +192,6 @@ simulate = {
         hrp.CFrame = CFrame.new(currentPos, targetPosition)
     end,
 
-    toggleview3rdor1st = (function()
-        local isFirstPerson = false
-        return function()
-            local camera = Services.Workspace.CurrentCamera
-            if not camera then return end
-
-            if isFirstPerson then
-                camera.CameraType = Enum.CameraType.Custom
-                camera.FieldOfView = 70
-                local humanoid = lplrVars.lplrHumanoid
-                if humanoid then
-                    camera.CameraSubject = humanoid
-                end
-                isFirstPerson = false
-            else
-                camera.CameraType = Enum.CameraType.Custom
-                camera.FieldOfView = 70
-                local head = lplrVars.lplrChar and lplrVars.lplrChar:FindFirstChild("Head")
-                if head then
-                    camera.CameraSubject = head
-                    camera.CFrame = CFrame.new(head.Position, head.Position + head.CFrame.LookVector)
-                end
-                isFirstPerson = true
-            end
-        end
-    end)(), 
-
-    changeFOV = function(fov)
-        local camera = Services.Workspace.CurrentCamera
-        if not camera then return end
-        camera.FieldOfView = fov
-    end,
-    
     VIM = {
         -- Input Simulation
         SendKeyEvent = function(isPressed, keyCode, isRepeatedKey, layerCollector)
@@ -301,6 +275,7 @@ simulate = {
         end,
     }
 }
+
 
 
 
@@ -528,16 +503,16 @@ local AC = function()
     local Saber = FindFirstChildWhichIsA(lplrVars.lplrws, "Tool")
     if DetectToolType(Saber)[1] == "Saber" then
         if mouse2HeldDown then
-            mouse2release()
+            simulate.mouserelease(false)
             mouse2HeldDown = false
         end
-        mouse1click()
+        simulate.mouseclick(true)
         wait(0.05)
-        mouse1release()
+        simulate.mouserelease(true)
         task.wait(math.random(5, 15)*0.001)
-        mouse2press()
+        simulate.mousepress(false)
         task.wait(0.1 // 128)
-        mouse2release()
+        simulate.mouserelease(false)
     end
 end
 
