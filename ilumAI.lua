@@ -296,6 +296,7 @@ local ForcePowerStorage = WaitForChild(Services.ReplicatedStorage, "ForcePowerSt
 -- Constants
 local AC_VARIATION_THRESHOLD = 0.03 
 local REQUIRED_AC_SAMPLES = 2
+local AC_TIMING = (45 / 1000) -- 45 milliseconds
 
 --
 
@@ -520,6 +521,186 @@ local detectIfClashing = function(targetName)
     return false
 end
 
+--- Run/Chase/Clash AI Training
+
+local CombatAI = {}
+CombatAI.__index = CombatAI
+
+local TrainingMode = {
+    EXPERT = "expert",
+    REINFORCEMENT = "reinforcement",
+    DISABLED = "disabled"
+}
+
+CombatAI.new = function()
+    local self = setmetatable({}, CombatAI)
+    self.ws = WebSocket.connect("ws://localhost:8765")
+    self.trainingMode = TrainingMode.EXPERT
+    self.lastState = nil
+    self.lastDecision = nil
+    self.active = false
+    
+    self:setup_training_monitor()
+    
+    return self
+end
+
+CombatAI.setup_training_monitor = function(self)
+    Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or not self.active then return end
+
+        if input.KeyCode == Enum.KeyCode.R then
+            self:send_expert_action("run")
+        elseif input.KeyCode == Enum.KeyCode.J then
+            self:send_expert_action("clash")
+        elseif input.KeyCode == Enum.KeyCode.U then
+            self:send_expert_action("chase")
+        elseif input.KeyCode == Enum.KeyCode.F5 then
+            self:save_model()
+        end
+    end)
+end
+
+CombatAI.send_state = function(self, playerName)
+    if not targetData[playerName] then initTargetData(playerName) end
+    
+    local state = {
+        type = "decision_request",
+        player_health = lplrVars.lplrHumanoid.Health,
+        target_health = targetData[playerName].Health,
+        player_force = lplrVars.Force,
+        target_force = targetData[playerName].Force,
+        distance = targetData[playerName].distanceFromLplr,
+        player_blocks = tonumber(lplrVars.BlockCount),
+        target_blocks = targetData[playerName].prevBlockCount,
+        ac_timing = targetData[playerName].acData and targetData[playerName].acData.lastACTiming or 0.2
+    }
+    
+    self.lastState = state
+    self.ws:Send(Services.HttpService:JSONEncode(state))
+end
+
+CombatAI.send_expert_action = function(self, action)
+    if not self.lastState then return end
+    
+    local data = {
+        type = "expert_action",
+        expert_action = action,
+        player_health = self.lastState.player_health,
+        target_health = self.lastState.target_health,
+        player_force = self.lastState.player_force,
+        target_force = self.lastState.target_force,
+        distance = self.lastState.distance,
+        player_blocks = self.lastState.player_blocks,
+        target_blocks = self.lastState.target_blocks,
+        ac_timing = self.lastState.ac_timing
+    }
+    
+    self.ws:Send(Services.HttpService:JSONEncode(data))
+end
+
+CombatAI.send_reinforcement = function(self, outcome)
+    if not self.lastState or not self.lastDecision then return end
+    
+    local data = {
+        type = "reinforcement",
+        outcome = outcome, -- "win" or "lose"
+        action_taken = self.lastDecision,
+        state = self.lastState
+    }
+    
+    self.ws:Send(Services.HttpService:JSONEncode(data))
+end
+
+CombatAI.save_model = function(self)
+    self.ws:Send(Services.HttpService:JSONEncode({
+        type = "save_model"
+    }))
+end
+
+CombatAI.initiate_clash = function(self)
+    -- TBI
+end
+
+CombatAI.initiate_chase = function(self)
+    -- TBI
+end
+
+CombatAI.retreat = function(self)
+    -- TBI
+end
+
+CombatAI.handle_message = function(self, message)
+    local success, data = pcall(Services.HttpService.JSONDecode, Services.HttpService, message)
+    if not success then return end
+    
+    if data.type == "decision_response" and data.action then
+        self.lastDecision = data.action
+        self.lastState = data.state
+        
+        if data.action == "clash" then
+            self:initiate_clash()
+        elseif data.action == "chase" then
+            self:initiate_chase()
+        elseif data.action == "run" then
+            self:retreat()
+        end
+        
+    elseif data.type == "expert_ack" then
+        print(string.format(
+            "Expert action applied to %d rules (avg weight: %.2f)",
+            data.updated_rules,
+            data.average_weight
+        ))
+    
+    elseif data.type == "reinforcement_ack" then
+        print(string.format(
+            "Reinforcement: %s got %s (updated %d rules)",
+            data.action,
+            data.reward > 0 and "reward" or "penalty",
+            data.updated_rules
+        ))
+    
+    elseif data.type == "save_result" then
+        print(string.format(
+            "Model saved with %d rules at %s",
+            data.rule_count,
+            data.timestamp
+        ))
+    end
+end
+
+CombatAI.start = function(self)
+    self.active = true
+    self.ws.OnMessage:Connect(function(message)
+        self:handle_message(message)
+    end)
+    
+    Services.RunService.Heartbeat:Connect(function()
+        if self.active and targetData.currentTarget then
+            self:send_state(targetData.currentTarget)
+        end
+    end)
+end
+
+CombatAI.stop = function(self)
+    self.active = false
+end
+
+
+local determineCombatOutcome = function()
+    -- TBI
+    -- returns win/loes
+end
+
+
+
+
+local trackCombatOutcome = function()
+    local outcome = determineCombatOutcome() -- Implement your own outcome determination
+    combatAI:send_reinforcement(outcome)
+end
+
 local runChaseOrClash = function(playerName)
     local opponentData = targetData[playerName]
 
@@ -715,7 +896,7 @@ local AC = function()
         simulate.mouserelease(true)
         task.wait(math.random(5, 15)*0.001)
         simulate.mousepress(false)
-        task.wait(0.1 // 128)
+        task.wait(AC_TIMING)
         simulate.mouserelease(false)
     end
 end
